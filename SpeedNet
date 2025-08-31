@@ -1,0 +1,57 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <sys/time.h>
+
+#define BUFFER_SIZE 1024 * 16
+#define TEST_HOST "speedtest.tele2.net"
+#define TEST_PORT "80"
+#define TEST_FILE "1MB.zip"
+
+double get_time_ms() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (tv.tv_sec * 1000.0) + (tv.tv_usec / 1000.0);
+}
+
+int main() {
+    struct addrinfo hints, *res;
+    int sock;
+    char request[256], buffer[BUFFER_SIZE];
+    ssize_t bytes;
+    double start, end, elapsed;
+    size_t total = 0;
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    getaddrinfo(TEST_HOST, TEST_PORT, &hints, &res);
+
+    start = get_time_ms();
+    sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    connect(sock, res->ai_addr, res->ai_addrlen);
+    end = get_time_ms();
+    printf("Ping: %.2f ms\n", end - start);
+
+    snprintf(request, sizeof(request),
+             "GET /%s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n",
+             TEST_FILE, TEST_HOST);
+    send(sock, request, strlen(request), 0);
+
+    start = get_time_ms();
+    while ((bytes = recv(sock, buffer, sizeof(buffer), 0)) > 0) {
+        total += bytes;
+    }
+    end = get_time_ms();
+    elapsed = (end - start) / 1000.0;
+
+    double mbps = (total * 8.0 / 1e6) / elapsed;
+    printf("Download: %.2f Mbps\n", mbps);
+
+    close(sock);
+    freeaddrinfo(res);
+    return 0;
+}
